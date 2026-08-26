@@ -1,0 +1,14 @@
+{
+  "name": "the-2nd-closet-caja",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Inventario y caja de the 2nd closet. React 18 + Babel standalone via CDN, sin build step.",
+  "scripts": {
+    "dev": "npx serve public",
+    "check": "node scripts/check-syntax.js",
+    "deploy": "npm run check && vercel --prod"
+  },
+  "devDependencies": {
+    "@babel/standalone": "^7.24.0"
+  }
+}
