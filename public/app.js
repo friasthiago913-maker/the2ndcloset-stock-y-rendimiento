@@ -249,6 +249,7 @@ function App(){
   const [margen, setMargen] = useState(() => loadMargin());
   const [confirmKey, setConfirmKey] = useState(null);
   const [editId, setEditId] = useState(null);
+  const [editGastoId, setEditGastoId] = useState(null);
   const [sellId, setSellId] = useState(null);
   const [sellPrecio, setSellPrecio] = useState("");
   const [sellFecha, setSellFecha] = useState(todayISO());
@@ -434,6 +435,10 @@ function App(){
     setEditId(null);
   };
   const removeGasto = (id) => { persist({ ...data, gastos: data.gastos.filter(g=>g.id!==id) }); setConfirmKey(null); };
+  const saveEditGasto = (updated) => {
+    persist({ ...data, gastos: data.gastos.map(g => g.id===updated.id ? updated : g) });
+    setEditGastoId(null);
+  };
   const revertItem = (id) => {
     persist({ ...data, items: data.items.map(i => i.id===id ? {...i, estado:"stock", precioVenta:null, fechaVenta:null, reservaHasta:null, comprador:null, entrega:null, metodoPago:null} : i) });
   };
@@ -776,7 +781,10 @@ function App(){
                       <button className="no" onClick={()=>setConfirmKey(null)}>volver</button>
                     </div>
                   ) : (
-                    <div className="item-actions"><button className="del" onClick={()=>setConfirmKey("gasto:"+g.id)}>quitar</button></div>
+                    <div className="item-actions">
+                      <button className="edit" onClick={()=>setEditGastoId(g.id)}>editar</button>
+                      <button className="del" onClick={()=>setConfirmKey("gasto:"+g.id)}>quitar</button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -908,6 +916,18 @@ function App(){
             cloudCfg={cloudCfg}
             onClose={()=>setEditId(null)}
             onSave={saveEdit}
+          />
+        );
+      })()}
+
+      {editGastoId && (() => {
+        const gasto = data.gastos.find(g=>g.id===editGastoId);
+        if (!gasto) return null;
+        return (
+          <EditGastoModal
+            gasto={gasto}
+            onClose={()=>setEditGastoId(null)}
+            onSave={saveEditGasto}
           />
         );
       })()}
@@ -1088,6 +1108,37 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
               </div>
             )}
           </div>
+        </div>
+        <div className="modal-actions">
+          <button className="cancel" onClick={onClose}>Cancelar</button>
+          <button className="save" onClick={handleSave}>Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditGastoModal({ gasto, onClose, onSave }){
+  const [concepto, setConcepto] = useState(gasto.concepto);
+  const [costo, setCosto] = useState(String(gasto.costo));
+  const [notas, setNotas] = useState(gasto.notas || "");
+  const [error, setError] = useState("");
+
+  const handleSave = () => {
+    const val = parseFloat(costo);
+    if (!concepto.trim() || !val || val <= 0) { setError("Completá nombre y costo."); return; }
+    onSave({ ...gasto, concepto: concepto.trim(), costo: val, notas: notas.trim() });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2>Editar gasto</h2>
+        {error && <div className="error">{error}</div>}
+        <div className="field"><label>Concepto</label><input type="text" value={concepto} onChange={e=>setConcepto(e.target.value)} /></div>
+        <div className="row2">
+          <div className="field"><label>Costo</label><input type="number" inputMode="numeric" value={costo} onChange={e=>setCosto(e.target.value)} /></div>
+          <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
         </div>
         <div className="modal-actions">
           <button className="cancel" onClick={onClose}>Cancelar</button>
