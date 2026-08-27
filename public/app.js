@@ -47,7 +47,7 @@ function withDefaults(item){
   return {
     estado: "stock", precioVenta: null, fechaVenta: null, cargadoPor: null,
     reservaHasta: null, comprador: null, entrega: null, metodoPago: null,
-    categoria: "", talle: "", notas: "", foto: null,
+    categoria: "", talle: "", notas: "", foto: null, estimadoVenta: null,
     ...item,
   };
 }
@@ -168,6 +168,8 @@ function computeStats(data){
   const gananciaNeta = ventasTotal - costoVendidos - gastosGenerales;
   const balance = ventasTotal - costoMercaderia - gastosGenerales;
   const stockValor = enStock.reduce((s,i)=>s+i.costo,0);
+  const proyeccionVentaTotal = enStock.reduce((s,i)=>s+(i.estimadoVenta!=null ? i.estimadoVenta : i.costo*2),0);
+  const proyeccionGanancia = proyeccionVentaTotal - stockValor;
   const totalInvertido = costoMercaderia + gastosGenerales;
   const roiPct = totalInvertido > 0 ? Math.round((ventasTotal / totalInvertido) * 100) : 0;
 
@@ -199,7 +201,7 @@ function computeStats(data){
   });
   const months = Object.keys(monthMap).sort();
 
-  return { costoMercaderia, gastosGenerales, ventasTotal, gananciaNeta, balance, stockValor, roiPct, tiempoPromedio, rentables, catRanking, monthMap, months, enStockCount: enStock.length, vendidosCount: vendidos.length, reservadosCount: reservados.length };
+  return { costoMercaderia, gastosGenerales, ventasTotal, gananciaNeta, balance, stockValor, proyeccionVentaTotal, proyeccionGanancia, roiPct, tiempoPromedio, rentables, catRanking, monthMap, months, enStockCount: enStock.length, vendidosCount: vendidos.length, reservadosCount: reservados.length };
 }
 
 function monthNameFull(ym){
@@ -848,6 +850,20 @@ function App(){
           </div>
 
           <div className="chart-card">
+            <h3>Proyección (si vendés todo el stock)</h3>
+            {stats.enStockCount === 0 ? (
+              <div className="empty-stats">No hay prendas en stock para proyectar.</div>
+            ) : (
+              <div>
+                <div className="meta-row"><span>Costo del stock</span><b>{fmtMoney(stats.stockValor)}</b></div>
+                <div className="meta-row"><span>Estimado de venta</span><b style={{color:"var(--gold)"}}>{fmtMoney(stats.proyeccionVentaTotal)}</b></div>
+                <div className="meta-row"><span>Ganancia proyectada</span><b style={{color: stats.proyeccionGanancia>=0 ? "#8fae6b" : "#ad2419"}}>{fmtMoney(stats.proyeccionGanancia)}</b></div>
+                <div className="meta-pct">Estimado editable por prenda (botón "editar"). Por defecto es 2x el costo.</div>
+              </div>
+            )}
+          </div>
+
+          <div className="chart-card">
             <h3>Ingresos vs. gastos por mes</h3>
             {stats.months.length === 0 ? (
               <div className="empty-stats">Todavía no hay suficientes datos</div>
@@ -1055,6 +1071,7 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
   const [categoria, setCategoria] = useState(item.categoria || "");
   const [talle, setTalle] = useState(item.talle || "");
   const [costo, setCosto] = useState(String(item.costo));
+  const [estimadoVenta, setEstimadoVenta] = useState(String(item.estimadoVenta != null ? item.estimadoVenta : item.costo * 2));
   const [notas, setNotas] = useState(item.notas || "");
   const [foto, setFoto] = useState(item.foto || null);
   const [fotoLoading, setFotoLoading] = useState(false);
@@ -1072,8 +1089,9 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
 
   const handleSave = () => {
     const val = parseFloat(costo);
+    const estVal = parseFloat(estimadoVenta);
     if (!concepto.trim() || !val || val <= 0) { setError("Completá nombre y costo."); return; }
-    onSave({ ...item, concepto: concepto.trim(), categoria, talle: talle.trim(), costo: val, notas: notas.trim(), foto });
+    onSave({ ...item, concepto: concepto.trim(), categoria, talle: talle.trim(), costo: val, estimadoVenta: (estVal && estVal > 0) ? estVal : null, notas: notas.trim(), foto });
   };
 
   return (
@@ -1094,8 +1112,9 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
         </div>
         <div className="row2">
           <div className="field"><label>Costo</label><input type="number" inputMode="numeric" value={costo} onChange={e=>setCosto(e.target.value)} /></div>
-          <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
+          <div className="field"><label>Estimado de venta</label><input type="number" inputMode="numeric" value={estimadoVenta} onChange={e=>setEstimadoVenta(e.target.value)} /></div>
         </div>
+        <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
         <div className="photo-field">
           <label>Foto</label>
           <div className="photo-picker">
