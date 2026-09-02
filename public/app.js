@@ -25,6 +25,16 @@ function fmtDate(iso){
     return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
   } catch (e) { return iso; }
 }
+// texto "pagó X (cargó Y)" para prendas/gastos, o "" si no hay datos
+function pagadorTexto(entity){
+  const pagado = entity.pagadoPor || entity.cargadoPor || null;
+  if (!pagado) return "";
+  let txt = " · pagó " + pagado;
+  if (entity.cargadoPor && entity.pagadoPor && entity.cargadoPor !== entity.pagadoPor) {
+    txt += " (cargó " + entity.cargadoPor + ")";
+  }
+  return txt;
+}
 function monthLabel(ym){
   try {
     const [y,m] = ym.split("-");
@@ -47,7 +57,7 @@ function withDefaults(item){
   return {
     estado: "stock", precioVenta: null, fechaVenta: null, cargadoPor: null,
     reservaHasta: null, comprador: null, entrega: null, metodoPago: null,
-    categoria: "", talle: "", notas: "", foto: null, estimadoVenta: null,
+    categoria: "", talle: "", notas: "", foto: null, estimadoVenta: null, pagadoPor: null,
     ...item,
   };
 }
@@ -202,6 +212,11 @@ function computeStats(data){
   const months = Object.keys(monthMap).sort();
 
   const gastosPorPersona = {};
+  items.forEach(i => {
+    if (!i.costo) return;
+    const p = i.pagadoPor || i.cargadoPor || "Sin asignar";
+    gastosPorPersona[p] = (gastosPorPersona[p] || 0) + i.costo;
+  });
   gastos.forEach(g => {
     const p = g.pagadoPor || g.cargadoPor || "Sin asignar";
     gastosPorPersona[p] = (gastosPorPersona[p] || 0) + g.costo;
@@ -253,7 +268,7 @@ function App(){
   const [talle, setTalle] = useState("");
   const [costo, setCosto] = useState("");
   const [notas, setNotas] = useState("");
-  const [gastoPagador, setGastoPagador] = useState("");
+  const [pagador, setPagador] = useState("");
   const [foto, setFoto] = useState(null);
   const [fotoLoading, setFotoLoading] = useState(false);
   const [margen, setMargen] = useState(() => loadMargin());
@@ -380,13 +395,14 @@ function App(){
         id: Date.now().toString(), concepto: concepto.trim(), categoria, talle: talle.trim(),
         costo: val, notas: notas.trim(), foto: foto || null, fechaCompra: todayISO(),
         estado: "stock", precioVenta: null, fechaVenta: null, cargadoPor: profile || null,
+        pagadoPor: pagador || profile || null,
         reservaHasta: null, comprador: null, entrega: null, metodoPago: null,
       };
       persist({ ...data, items: [item, ...data.items] });
     } else if (movType === "gasto") {
       const val = parseFloat(costo);
       if (!val || val <= 0) return;
-      const gasto = { id: Date.now().toString(), concepto: concepto.trim(), costo: val, notas: notas.trim(), fecha: todayISO(), cargadoPor: profile || null, pagadoPor: gastoPagador || profile || null };
+      const gasto = { id: Date.now().toString(), concepto: concepto.trim(), costo: val, notas: notas.trim(), fecha: todayISO(), cargadoPor: profile || null, pagadoPor: pagador || profile || null };
       persist({ ...data, gastos: [gasto, ...data.gastos] });
     } else if (movType === "venta") {
       const precio = parseFloat(ventaPrecio);
@@ -397,11 +413,12 @@ function App(){
         id: Date.now().toString(), concepto: concepto.trim(), categoria, talle: talle.trim(),
         costo: costoVal, notas: notas.trim(), foto: foto || null, fechaCompra: fVenta,
         estado: "vendido", precioVenta: precio, fechaVenta: fVenta, cargadoPor: profile || null,
+        pagadoPor: pagador || profile || null,
         reservaHasta: null, comprador: null, entrega: null, metodoPago: null,
       };
       persist({ ...data, items: [item, ...data.items] });
     }
-    setConcepto(""); setCategoria(""); setTalle(""); setCosto(""); setNotas(""); setFoto(null); setGastoPagador("");
+    setConcepto(""); setCategoria(""); setTalle(""); setCosto(""); setNotas(""); setFoto(null); setPagador("");
     setVentaPrecio(""); setVentaFecha(todayISO());
   };
 
@@ -549,14 +566,12 @@ function App(){
               <input type="text" placeholder={movType==="gasto" ? "ej: envío suelto, insumos" : "ej: buzo negro talle M"} value={concepto} onChange={e=>setConcepto(e.target.value)} />
             </div>
 
-            {movType === "gasto" && (
-              <div className="field">
-                <label>¿Quién pagó?</label>
-                <select value={gastoPagador || profile || ""} onChange={e=>setGastoPagador(e.target.value)}>
-                  {usuariosConocidos.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-            )}
+            <div className="field">
+              <label>¿Quién pagó?</label>
+              <select value={pagador || profile || ""} onChange={e=>setPagador(e.target.value)}>
+                {usuariosConocidos.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
 
             {(movType === "item" || movType === "venta") && (
               <div className="row2">
@@ -672,7 +687,7 @@ function App(){
                       </div>
                     )}
                     {i.notas && <div className="notas">{i.notas}</div>}
-                    <div className="meta">comprado {fmtDate(i.fechaCompra)}{i.cargadoPor ? " · cargó " + i.cargadoPor : ""}</div>
+                    <div className="meta">comprado {fmtDate(i.fechaCompra)}{pagadorTexto(i)}</div>
                   </div>
                 </div>
                 <div className="item-right">
@@ -711,7 +726,7 @@ function App(){
                     {i.categoria && <span className="badge cat">{i.categoria}</span>}
                     <span className="badge reservado">reservada</span>
                     <div className="meta">hasta {fmtDate(i.reservaHasta)}{i.comprador ? " · " + i.comprador : ""}</div>
-                    {i.cargadoPor && <div className="meta">cargó {i.cargadoPor}</div>}
+                    {(i.pagadoPor || i.cargadoPor) && <div className="meta">{pagadorTexto(i).replace(/^ · /, "")}</div>}
                   </div>
                 </div>
                 <div className="item-right">
@@ -754,7 +769,7 @@ function App(){
                       {(i.comprador || i.entrega || i.metodoPago) && (
                         <div className="meta">{[i.comprador, i.entrega, i.metodoPago].filter(Boolean).join(" · ")}</div>
                       )}
-                      {i.cargadoPor && <div className="meta">cargó {i.cargadoPor}</div>}
+                      {(i.pagadoPor || i.cargadoPor) && <div className="meta">{pagadorTexto(i).replace(/^ · /, "")}</div>}
                       <div className={"ganancia " + (ganancia>=0?"pos":"neg")}>{ganancia>=0?"+":""}{fmtMoney(ganancia)} de ganancia</div>
                     </div>
                   </div>
@@ -789,7 +804,7 @@ function App(){
                   <div>
                     <div className="concepto">{g.concepto}</div>
                     {g.notas && <div className="notas">{g.notas}</div>}
-                    <div className="meta">{fmtDate(g.fecha)}{g.pagadoPor ? " · pagó " + g.pagadoPor : (g.cargadoPor ? " · pagó " + g.cargadoPor : "")}{g.cargadoPor && g.pagadoPor && g.cargadoPor !== g.pagadoPor ? " (cargó " + g.cargadoPor + ")" : ""}</div>
+                    <div className="meta">{fmtDate(g.fecha)}{pagadorTexto(g)}</div>
                   </div>
                 </div>
                 <div className="item-right">
@@ -933,18 +948,19 @@ function App(){
           </div>
 
           <div className="chart-card">
-            <h3>Gastos generales por persona</h3>
+            <h3>Plata puesta por persona</h3>
             {stats.gastosPorPersonaRanking.length === 0 ? (
-              <div className="empty-stats">Todavía no hay gastos generales cargados</div>
+              <div className="empty-stats">Todavía no hay prendas ni gastos cargados</div>
             ) : (
               <div>
                 {stats.gastosPorPersonaRanking.map(([persona, monto]) => {
-                  const pct = stats.gastosGenerales > 0 ? Math.round((monto / stats.gastosGenerales) * 100) : 0;
+                  const totalPuesto = stats.costoMercaderia + stats.gastosGenerales;
+                  const pct = totalPuesto > 0 ? Math.round((monto / totalPuesto) * 100) : 0;
                   return (
                     <div key={persona} className="persona-gasto-row">
                       <div className="meta-row"><span>{persona}</span><b style={{color:"#ad2419"}}>{fmtMoney(monto)}</b></div>
                       <div className="meta-bar"><div className="meta-bar-fill persona-fill" style={{width: pct + "%"}}></div></div>
-                      <div className="meta-pct">{pct}% del total de gastos generales</div>
+                      <div className="meta-pct">{pct}% de lo puesto (mercadería + gastos generales)</div>
                     </div>
                   );
                 })}
@@ -967,6 +983,7 @@ function App(){
           <EditModal
             item={item}
             cloudCfg={cloudCfg}
+            usuariosConocidos={usuariosConocidos}
             onClose={()=>setEditId(null)}
             onSave={saveEdit}
           />
@@ -1104,12 +1121,13 @@ function ProfileModal({ current, closable, onSelect, onClose }){
   );
 }
 
-function EditModal({ item, cloudCfg, onClose, onSave }){
+function EditModal({ item, cloudCfg, usuariosConocidos, onClose, onSave }){
   const [concepto, setConcepto] = useState(item.concepto);
   const [categoria, setCategoria] = useState(item.categoria || "");
   const [talle, setTalle] = useState(item.talle || "");
   const [costo, setCosto] = useState(String(item.costo));
   const [estimadoVenta, setEstimadoVenta] = useState(String(item.estimadoVenta != null ? item.estimadoVenta : item.costo * 2));
+  const [pagadoPor, setPagadoPor] = useState(item.pagadoPor || item.cargadoPor || "");
   const [notas, setNotas] = useState(item.notas || "");
   const [foto, setFoto] = useState(item.foto || null);
   const [fotoLoading, setFotoLoading] = useState(false);
@@ -1129,7 +1147,7 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
     const val = parseFloat(costo);
     const estVal = parseFloat(estimadoVenta);
     if (!concepto.trim() || !val || val <= 0) { setError("Completá nombre y costo."); return; }
-    onSave({ ...item, concepto: concepto.trim(), categoria, talle: talle.trim(), costo: val, estimadoVenta: (estVal && estVal > 0) ? estVal : null, notas: notas.trim(), foto });
+    onSave({ ...item, concepto: concepto.trim(), categoria, talle: talle.trim(), costo: val, estimadoVenta: (estVal && estVal > 0) ? estVal : null, pagadoPor: pagadoPor || null, notas: notas.trim(), foto });
   };
 
   return (
@@ -1151,6 +1169,13 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
         <div className="row2">
           <div className="field"><label>Costo</label><input type="number" inputMode="numeric" value={costo} onChange={e=>setCosto(e.target.value)} /></div>
           <div className="field"><label>Estimado de venta</label><input type="number" inputMode="numeric" value={estimadoVenta} onChange={e=>setEstimadoVenta(e.target.value)} /></div>
+        </div>
+        <div className="field">
+          <label>¿Quién pagó?</label>
+          <select value={pagadoPor} onChange={e=>setPagadoPor(e.target.value)}>
+            <option value="">Sin asignar</option>
+            {usuariosConocidos.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
         </div>
         <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
         <div className="photo-field">
