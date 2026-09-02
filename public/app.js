@@ -58,7 +58,7 @@ function normalizeData(raw){
     return {
       version: 2,
       items: (raw.items || []).map(withDefaults),
-      gastos: (raw.gastos || []).map(g => ({ cargadoPor: null, notas: "", ...g })),
+      gastos: (raw.gastos || []).map(g => ({ cargadoPor: null, pagadoPor: null, notas: "", ...g })),
       meta: (typeof raw.meta === "number") ? raw.meta : null,
     };
   }
@@ -203,7 +203,7 @@ function computeStats(data){
 
   const gastosPorPersona = {};
   gastos.forEach(g => {
-    const p = g.cargadoPor || "Sin asignar";
+    const p = g.pagadoPor || g.cargadoPor || "Sin asignar";
     gastosPorPersona[p] = (gastosPorPersona[p] || 0) + g.costo;
   });
   const gastosPorPersonaRanking = Object.entries(gastosPorPersona).sort((a,b)=>b[1]-a[1]);
@@ -253,6 +253,7 @@ function App(){
   const [talle, setTalle] = useState("");
   const [costo, setCosto] = useState("");
   const [notas, setNotas] = useState("");
+  const [gastoPagador, setGastoPagador] = useState("");
   const [foto, setFoto] = useState(null);
   const [fotoLoading, setFotoLoading] = useState(false);
   const [margen, setMargen] = useState(() => loadMargin());
@@ -385,7 +386,7 @@ function App(){
     } else if (movType === "gasto") {
       const val = parseFloat(costo);
       if (!val || val <= 0) return;
-      const gasto = { id: Date.now().toString(), concepto: concepto.trim(), costo: val, notas: notas.trim(), fecha: todayISO(), cargadoPor: profile || null };
+      const gasto = { id: Date.now().toString(), concepto: concepto.trim(), costo: val, notas: notas.trim(), fecha: todayISO(), cargadoPor: profile || null, pagadoPor: gastoPagador || profile || null };
       persist({ ...data, gastos: [gasto, ...data.gastos] });
     } else if (movType === "venta") {
       const precio = parseFloat(ventaPrecio);
@@ -400,7 +401,7 @@ function App(){
       };
       persist({ ...data, items: [item, ...data.items] });
     }
-    setConcepto(""); setCategoria(""); setTalle(""); setCosto(""); setNotas(""); setFoto(null);
+    setConcepto(""); setCategoria(""); setTalle(""); setCosto(""); setNotas(""); setFoto(null); setGastoPagador("");
     setVentaPrecio(""); setVentaFecha(todayISO());
   };
 
@@ -547,6 +548,15 @@ function App(){
               <label>{movType==="gasto" ? "Concepto" : "Nombre de la prenda"}</label>
               <input type="text" placeholder={movType==="gasto" ? "ej: envío suelto, insumos" : "ej: buzo negro talle M"} value={concepto} onChange={e=>setConcepto(e.target.value)} />
             </div>
+
+            {movType === "gasto" && (
+              <div className="field">
+                <label>¿Quién pagó?</label>
+                <select value={gastoPagador || profile || ""} onChange={e=>setGastoPagador(e.target.value)}>
+                  {usuariosConocidos.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+            )}
 
             {(movType === "item" || movType === "venta") && (
               <div className="row2">
@@ -779,7 +789,7 @@ function App(){
                   <div>
                     <div className="concepto">{g.concepto}</div>
                     {g.notas && <div className="notas">{g.notas}</div>}
-                    <div className="meta">{fmtDate(g.fecha)}{g.cargadoPor ? " · cargó " + g.cargadoPor : ""}</div>
+                    <div className="meta">{fmtDate(g.fecha)}{g.pagadoPor ? " · pagó " + g.pagadoPor : (g.cargadoPor ? " · pagó " + g.cargadoPor : "")}{g.cargadoPor && g.pagadoPor && g.cargadoPor !== g.pagadoPor ? " (cargó " + g.cargadoPor + ")" : ""}</div>
                   </div>
                 </div>
                 <div className="item-right">
@@ -969,6 +979,7 @@ function App(){
         return (
           <EditGastoModal
             gasto={gasto}
+            usuariosConocidos={usuariosConocidos}
             onClose={()=>setEditGastoId(null)}
             onSave={saveEditGasto}
           />
@@ -1164,16 +1175,17 @@ function EditModal({ item, cloudCfg, onClose, onSave }){
   );
 }
 
-function EditGastoModal({ gasto, onClose, onSave }){
+function EditGastoModal({ gasto, usuariosConocidos, onClose, onSave }){
   const [concepto, setConcepto] = useState(gasto.concepto);
   const [costo, setCosto] = useState(String(gasto.costo));
+  const [pagadoPor, setPagadoPor] = useState(gasto.pagadoPor || gasto.cargadoPor || "");
   const [notas, setNotas] = useState(gasto.notas || "");
   const [error, setError] = useState("");
 
   const handleSave = () => {
     const val = parseFloat(costo);
     if (!concepto.trim() || !val || val <= 0) { setError("Completá nombre y costo."); return; }
-    onSave({ ...gasto, concepto: concepto.trim(), costo: val, notas: notas.trim() });
+    onSave({ ...gasto, concepto: concepto.trim(), costo: val, pagadoPor: pagadoPor || null, notas: notas.trim() });
   };
 
   return (
@@ -1184,8 +1196,15 @@ function EditGastoModal({ gasto, onClose, onSave }){
         <div className="field"><label>Concepto</label><input type="text" value={concepto} onChange={e=>setConcepto(e.target.value)} /></div>
         <div className="row2">
           <div className="field"><label>Costo</label><input type="number" inputMode="numeric" value={costo} onChange={e=>setCosto(e.target.value)} /></div>
-          <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
+          <div className="field">
+            <label>¿Quién pagó?</label>
+            <select value={pagadoPor} onChange={e=>setPagadoPor(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {usuariosConocidos.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
         </div>
+        <div className="field"><label>Notas</label><input type="text" value={notas} onChange={e=>setNotas(e.target.value)} /></div>
         <div className="modal-actions">
           <button className="cancel" onClick={onClose}>Cancelar</button>
           <button className="save" onClick={handleSave}>Guardar cambios</button>
