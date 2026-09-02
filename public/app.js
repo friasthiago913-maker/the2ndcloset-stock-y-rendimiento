@@ -201,7 +201,14 @@ function computeStats(data){
   });
   const months = Object.keys(monthMap).sort();
 
-  return { costoMercaderia, gastosGenerales, ventasTotal, gananciaNeta, balance, stockValor, proyeccionVentaTotal, proyeccionGanancia, roiPct, tiempoPromedio, rentables, catRanking, monthMap, months, enStockCount: enStock.length, vendidosCount: vendidos.length, reservadosCount: reservados.length };
+  const gastosPorPersona = {};
+  gastos.forEach(g => {
+    const p = g.cargadoPor || "Sin asignar";
+    gastosPorPersona[p] = (gastosPorPersona[p] || 0) + g.costo;
+  });
+  const gastosPorPersonaRanking = Object.entries(gastosPorPersona).sort((a,b)=>b[1]-a[1]);
+
+  return { costoMercaderia, gastosGenerales, ventasTotal, gananciaNeta, balance, stockValor, proyeccionVentaTotal, proyeccionGanancia, roiPct, tiempoPromedio, rentables, catRanking, monthMap, months, enStockCount: enStock.length, vendidosCount: vendidos.length, reservadosCount: reservados.length, gastosPorPersonaRanking };
 }
 
 function monthNameFull(ym){
@@ -912,6 +919,26 @@ function App(){
                   <li key={cat}><span className="name">{cat}</span><span className="val">{count} {count===1?"venta":"ventas"}</span></li>
                 ))}
               </ul>
+            )}
+          </div>
+
+          <div className="chart-card">
+            <h3>Gastos generales por persona</h3>
+            {stats.gastosPorPersonaRanking.length === 0 ? (
+              <div className="empty-stats">Todavía no hay gastos generales cargados</div>
+            ) : (
+              <div>
+                {stats.gastosPorPersonaRanking.map(([persona, monto]) => {
+                  const pct = stats.gastosGenerales > 0 ? Math.round((monto / stats.gastosGenerales) * 100) : 0;
+                  return (
+                    <div key={persona} className="persona-gasto-row">
+                      <div className="meta-row"><span>{persona}</span><b style={{color:"#ad2419"}}>{fmtMoney(monto)}</b></div>
+                      <div className="meta-bar"><div className="meta-bar-fill persona-fill" style={{width: pct + "%"}}></div></div>
+                      <div className="meta-pct">{pct}% del total de gastos generales</div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
